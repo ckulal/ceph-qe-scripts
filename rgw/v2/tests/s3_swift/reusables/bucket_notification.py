@@ -247,6 +247,12 @@ def verify_event_record(
             raise EventRecordDataError("event record not generated! File is empty")
 
     # verify event record for a particular event type
+    ceph_version_id, _ = utils.get_ceph_version()
+    if float(ceph_version_id[5]) >= 8:
+        non_current = "NonCurrent"
+    else:
+        non_current = "Noncurrent"
+
     notifications_received = False
     events = []
     if "Delete" in event_type:
