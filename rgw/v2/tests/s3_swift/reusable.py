@@ -2561,7 +2561,8 @@ def test_bucket_stats_colocated_archive_zone(bucket_name_to_create, each_user, c
     cmd1 = f"radosgw-admin bucket stats --bucket {bucket_name_to_create}"
     cmd2 = " --rgw-zone archive"
     pri_bkt_stat_output = json.loads(utils.exec_shell_cmd(cmd1))
-    arc_bkt_stat_output = json.loads(utils.exec_shell_cmd(cmd1 + cmd2))
+    out = utils.exec_shell_cmd(cmd1 + cmd2)
+    arc_bkt_stat_output = json.loads(out)
     pri_bucket_versioning = pri_bkt_stat_output["versioning"]
     arc_bucket_versioning = arc_bkt_stat_output["versioning"]
     if arc_bucket_versioning == "off":
