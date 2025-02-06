@@ -2368,6 +2368,19 @@ def resharding_enable_disable_in_zonegroup(enable=True):
         log.info("Resharding feature is successfully modified in zonegroup")
 
 
+def resharding_disable_in_zone(zone_name):
+    log.info("method for disabling resharding feature in zone!")
+    cmd = f"radosgw-admin zonegroup modify --rgw-zone={zone_name} --disable-feature=resharding"
+    utils.exec_shell_cmd(cmd)
+    utils.exec_shell_cmd("radosgw-admin period update --commit")
+    zone_get_cmd = f"radosgw-admin zonegroup get --rgw-zone {zone_name}"
+    zone_detail = json.loads(utils.exec_shell_cmd(zone_get_cmd))
+    zone_feature = zone_detail.get("enabled_features")
+    if "resharding" in zone_feature:
+        raise AssertionError("Resharding feature not disabled in zone {zone_name}")
+
+
+
 def fetch_bucket_gen(bucket):
     log.info(f"fetch bucket gen for the bucket {bucket}")
     json_doc = json.loads(
