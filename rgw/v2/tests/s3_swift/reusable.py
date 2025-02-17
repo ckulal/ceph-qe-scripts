@@ -2795,3 +2795,68 @@ def generate_presigned_url(rgw_s3_client, client_method, http_method, params):
     )
     log.info(f"presigned_url: {presigned_url}")
     return presigned_url
+
+
+# def node_reboot(node, rgw_ssh):
+#     log.debug(f"Peforming reboot of the node : {node}")
+#     node.exec_command(cmd="reboot", sudo=True)
+#     time.sleep(2)
+#     log.info(f"checking ceph status")
+#     utils.exec_shell_cmd(f"ceph -s")
+#     # Waiting for recovery to post OSD host addition
+#     method_should_succeed(wait_for_clean_pg_sets, rados_obj, timeout=12000)
+#     # Checking cluster health after OSD removal
+#     method_should_succeed(rados_obj.run_pool_sanity_check)
+#     log.info(f"reboot of OSD host : {node.hostname} is successful.")
+#         log.debug("Done with reboot of all the OSD hosts")
+
+
+def enable_coredump_in_all_nodes(conf_file="/etc/systemd/coredump.conf"):
+    """
+    Method to enable coredump in all the cluster nodes
+    """
+    # out = utils.exec_shell_cmd(f"ceph orch host ls")
+    # log.info(f"AAA out is {out}")
+    # out_details = out.split()
+    # log.info(f"BBB out is {out_details}")
+    # host_ip = out_details[1]
+    # host_ssh_con = utils.connect_remote(host_ip)
+    host_ips = utils.exec_shell_cmd("cut -f 1 /etc/hosts | cut -d ' ' -f 3")
+    host_ips = host_ips.splitlines()
+    log.info(f"hosts_ips: {host_ips}")
+    for ip in host_ips:
+        if ip.startswith("10."):
+            host_ssh_con = utils.connect_remote(ip)
+            Enable_coredump_in_node(host_ssh_con)
+    
+
+def Enable_coredump_in_node(node_conn, conf_file="/etc/systemd/coredump.conf"):
+    """
+    Method to enable coredump in single node
+    """
+    try:
+        _, stdout, _ = node_conn.exec_command(
+            f"echo Storage=external >> {conf_file}"
+        )
+        cmd_output = stdout.read().decode()
+        log.info(f"cmd_output is {cmd_output}")
+
+        _, stdout, _ = node_conn.exec_command(
+            f"echo DefaultLimitCORE=infinity >> {conf_file}"
+        )
+        cmd_output = stdout.read().decode()
+        log.info(f"cmd_output is {cmd_output}")
+
+        _, stdout, _ = node_conn.exec_command(
+            f"systemctl daemon-reexec"
+        )
+        cmd_output = stdout.read().decode()
+        log.info(f"cmd_output is {cmd_output}")
+
+         _, stdout, _ = node_conn.exec_command(
+            f"ls /var/lib/systemd/coredump/"
+        )
+        cmd_output = stdout.read().decode()
+        log.info(f"cmd_output is {cmd_output}")
+    except Exception:
+            raise OperationFailedError(f"failed enable coredump")

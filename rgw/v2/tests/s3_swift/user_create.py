@@ -125,7 +125,10 @@ def test_exec(config, ssh_con):
 
             log.info("Check sync status in remote site")
             sync_status(ssh_con=remote_site_ssh_con)
-
+        while True:
+            reusable.enable_coredump_in_all_nodes()
+            exit()
+        
         test_info.success_status("test passed")
         sys.exit(0)
     except Exception as e:
