@@ -2821,6 +2821,9 @@ def generate_presigned_url(rgw_s3_client, client_method, http_method, params):
 
 
 def reboot_rgw_nodes():
+    """
+    Method to fetch rgw nodes to proceed with reboot
+    """
     host_ips = utils.exec_shell_cmd("cut -f 1 /etc/hosts | cut -d ' ' -f 3")
     host_ips = host_ips.splitlines()
     log.info(f"hosts_ips: {host_ips}")

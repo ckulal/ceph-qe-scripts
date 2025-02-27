@@ -131,7 +131,7 @@ def test_exec(config, ssh_con):
         )
     while True:
         reusable.reboot_rgw_nodes()
-        continue()
+        break
     # check for any crashes during the execution
     crash_info = reusable.check_for_crash()
     if crash_info:
