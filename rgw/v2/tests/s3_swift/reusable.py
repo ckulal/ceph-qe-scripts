@@ -2841,10 +2841,16 @@ def reboot_rgw_nodes():
                 node_reboot(ssh_con)
 
 
-def node_reboot(node):
+def node_reboot(node, retry=10, delay=10):
     log.debug(f"Peforming reboot of the node : {node}")
     node.exec_command("sudo reboot")
     time.sleep(120)
     log.info(f"checking ceph status")
     utils.exec_shell_cmd(f"ceph -s")
-    utils.exec_shell_cmd(f"ceph orch ps | grep rgw")
+    
+    for retry_count in range(retry):
+        time.sleep(delay)
+        out = utils.exec_shell_cmd(f"ceph orch ps | grep rgw")
+        ot = out.split(" ")[3]
+        log.info(f"ooooo :{ot}")
+
