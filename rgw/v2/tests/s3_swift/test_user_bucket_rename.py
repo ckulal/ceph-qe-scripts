@@ -129,6 +129,9 @@ def test_exec(config, ssh_con):
         reusable.link_chown_to_nontenanted(
             non_ten_users[0]["user_id"], ten_buckets[ten_users[0]["user_id"]], tenant1
         )
+    while True:
+        reusable.reboot_rgw_nodes()
+        continue()
     # check for any crashes during the execution
     crash_info = reusable.check_for_crash()
     if crash_info:

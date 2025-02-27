@@ -2818,3 +2818,30 @@ def generate_presigned_url(rgw_s3_client, client_method, http_method, params):
     )
     log.info(f"presigned_url: {presigned_url}")
     return presigned_url
+
+
+def reboot_rgw_nodes():
+    host_ips = utils.exec_shell_cmd("cut -f 1 /etc/hosts | cut -d ' ' -f 3")
+    host_ips = host_ips.splitlines()
+    log.info(f"hosts_ips: {host_ips}")
+    for ip in host_ips:
+        if ip.startswith("10."):
+            log.info(f"ip is {ip}")
+            ssh_con = utils.connect_remote(ip)
+            stdin, stdout, stderr = ssh_con.exec_command(
+                "sudo netstat -nltp | grep radosgw"
+            )
+            netstst_op = stdout.readline().strip()
+            log.info(f"netstat op on node {ip} is:{netstst_op}")
+            if netstst_op:
+                log.info("Entering RGW node")
+                node_reboot(ssh_con)
+
+
+def node_reboot(node):
+    log.debug(f"Peforming reboot of the node : {node}")
+    node.exec_command("sudo reboot")
+    time.sleep(120)
+    log.info(f"checking ceph status")
+    utils.exec_shell_cmd(f"ceph -s")
+    utils.exec_shell_cmd(f"ceph orch ps | grep rgw")
