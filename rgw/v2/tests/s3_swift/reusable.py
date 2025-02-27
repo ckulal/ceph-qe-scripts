@@ -2838,19 +2838,36 @@ def reboot_rgw_nodes():
             log.info(f"netstat op on node {ip} is:{netstst_op}")
             if netstst_op:
                 log.info("Entering RGW node")
-                node_reboot(ssh_con)
+                stdin, stdout, stderrt = ssh_con.exec_command("hostname")
+                host = stdout.readline().strip()
+                log.info(f"hostname is {host}")
+                cmd = f"ceph orch ps|grep rgw|grep {host}"
+                out = utils.exec_shell_cmd(cmd)
+                log.info(f"service name is {out.split()[0]}")
+                node_reboot(ssh_con, service_name=out.split()[0])
 
 
-def node_reboot(node, retry=10, delay=10):
+def node_reboot(node, service_name=None, retry=10, delay=10):
     log.debug(f"Peforming reboot of the node : {node}")
     node.exec_command("sudo reboot")
     time.sleep(120)
     log.info(f"checking ceph status")
     utils.exec_shell_cmd(f"ceph -s")
-    
-    for retry_count in range(retry):
-        time.sleep(delay)
-        out = utils.exec_shell_cmd(f"ceph orch ps | grep rgw")
-        ot = out.split(" ")[3]
-        log.info(f"ooooo :{ot}")
-
+    # out = utils.exec_shell_cmd(f"ceph orch ps | grep rgw| cut -d ' ' -f 3")
+    # log.info(f"AAA {out}")
+    #ot = str(out).split(" ")
+    #log.info(f"ooooo :{ot}")
+    # for retry_count in range(retry):
+    #     time.sleep(delay)
+    #     out = utils.exec_shell_cmd(f"ceph orch ps | grep rgw")
+    #     ot = out.split(" ")[3]
+    #     log.info(f"ooooo :{ot}")
+    cmd = "ceph orch ps --format json-pretty"
+    out = json.loads(utils.exec_shell_cmd(cmd))
+    ty = type(out)
+    log.info(f"{ty}")
+    for entry in out:
+        log.info(f"out issss {entry}")
+        if service_name == entry["daemon_name"]:
+            status= entry["status_desc"]
+            log.info(f"status is {status}")
