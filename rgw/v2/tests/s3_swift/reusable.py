@@ -1629,13 +1629,17 @@ def time_to_list_via_boto(bucket_name, rgw):
     return time_taken
 
 
-def check_sync_status(retry=None, delay=None):
+def check_sync_status(retry=None, delay=None, return_while_sync_inprogress=False):
     """
     Check sync status if its a multisite cluster
     """
     is_multisite = utils.is_cluster_multisite()
     if is_multisite:
-        sync_status()
+        if return_while_sync_inprogress:
+            out = sync_status(return_while_sync_inprogress=return_while_sync_inprogress)
+            log.info(f"Retrun AAA is {out}")
+            return out
+        sync_status(return_while_sync_inprogress=return_while_sync_inprogress)
 
 
 def check_bucket_sync_status(bkt=None):
@@ -3056,7 +3060,7 @@ def node_reboot(node, service_name=None, retry=15, delay=60):
     retry: retry to wait foe node/service to come up post reboot
     delay: sllep time of 1 min between each try
     """
-    log.debug(f"Peforming reboot of the node : {node}")
+    log.info(f"Peforming reboot of the node : {node}")
     node.exec_command("sudo reboot")
     time.sleep(120)
     log.info(f"checking ceph status")
@@ -3082,3 +3086,87 @@ def node_reboot(node, service_name=None, retry=15, delay=60):
                 break
         if retry_count + 1 == retry:
             raise AssertionError("Node is not in expected state post 15min!!")
+
+
+# def rgw_service_down(service_name, node_instance):
+#     """
+#     Method to bring down rgw service
+#     """
+#     log.info(f"Stopping RGW service: {service_name} on the node {node_instance.node}")
+#     cmd = f"systemctl stop {service_name}"
+#     stdin, stdout, stderr = ssh_con.exec_command(cmd)
+#     output = stdout.readline().strip()
+#     log.info(f"out put is {output}")
+
+
+def bring_down_all_rgws_in_the_site(rgw_service_name="rgw.shared.pri", retry=10, delay=10):
+   """
+    Method to bring down rgw services in all the nodes
+   """ 
+   cmd = f"ceph orch stop {rgw_service_name}"
+   utils.exec_shell_cmd(cmd)
+   cmd = "ceph orch ps --format json-pretty"
+   out = json.loads(utils.exec_shell_cmd(cmd))
+
+   for entry in out:
+        daemon = entry["daemon_name"].split(".")[0]
+        log.info(f"daemon type is {daemon}")
+        if daemon=="rgw": 
+            log.info("ENTER")
+            service_name = entry["daemon_name"]
+            log.info(f'daemon is {service_name}')
+            status = entry["status_desc"]
+            if str(status) == "running":
+                log.info(f"enter loop of retry")
+                for retry_count in range(retry):
+                    log.info(f"try {retry_count}")
+                    out = json.loads(utils.exec_shell_cmd(cmd))
+                    for entry in out:
+                        if service_name == entry["daemon_name"]:
+                            status = entry["status_desc"]
+                    log.info(f"status is {status}")
+                    if str(status) == "running":
+                        log.info(f"Node is not in expected state, waiting for {delay} seconds")
+                        time.sleep(delay)
+                    else:
+                        log.info(f'Node {service_name} is in expected state')
+                        break
+                if retry_count + 1 == retry:
+                    raise AssertionError("Node is not in expected state!!")
+
+
+
+def bring_up_all_rgws_in_the_site(rgw_service_name="rgw.shared.pri", retry=10, delay=10):
+   """
+    Method to bring down rgw services in all the nodes
+   """ 
+   cmd = f"ceph orch start {rgw_service_name}"
+   utils.exec_shell_cmd(cmd)
+   cmd = "ceph orch ps --format json-pretty"
+   out = json.loads(utils.exec_shell_cmd(cmd))
+
+   for entry in out:
+        daemon = entry["daemon_name"].split(".")[0]
+        log.info(f"daemon type is {daemon}")
+        if daemon=="rgw": 
+            log.info("ENTER")
+            service_name = entry["daemon_name"]
+            log.info(f'daemon is {service_name}')
+            status = entry["status_desc"]
+            if str(status) != "running":
+                log.info(f"enter loop of retry")
+                for retry_count in range(retry):
+                    log.info(f"try {retry_count}")
+                    out = json.loads(utils.exec_shell_cmd(cmd))
+                    for entry in out:
+                        if service_name == entry["daemon_name"]:
+                            status = entry["status_desc"]
+                    log.info(f"status is {status}")
+                    if str(status) != "running":
+                        log.info(f"Node is not in expected state, waiting for {delay} seconds")
+                        time.sleep(delay)
+                    else:
+                        log.info(f'Node {service_name} is in expected state')
+                        break
+                if retry_count + 1 == retry:
+                    raise AssertionError("Node is not in expected state!!")

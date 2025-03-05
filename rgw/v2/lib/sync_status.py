@@ -46,7 +46,7 @@ def sync_status(retry=25, delay=60, ssh_con=None, return_while_sync_inprogress=F
     if "behind" in check_sync_status or "recovering" in check_sync_status:
         log.info("sync is in progress")
         if return_while_sync_inprogress:
-            return
+            return "sync_profgress"
         log.info(f"sleep of {delay} secs for sync to complete")
         for retry_count in range(retry):
             time.sleep(delay)

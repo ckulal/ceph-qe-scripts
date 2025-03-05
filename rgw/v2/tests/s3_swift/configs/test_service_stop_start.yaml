@@ -1,0 +1,7 @@
+config:
+  user_count: 0
+  bucket_count: 0
+  objects_count: 0
+  objects_size_range:
+    min: 0
+    max: 0

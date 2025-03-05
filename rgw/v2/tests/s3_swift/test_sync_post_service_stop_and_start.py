@@ -34,7 +34,10 @@ def test_exec(config, ssh_con):
     log.info(f"Return value is {out}")
     if str(out) != "sync_progress":
         raise AssertionError("sync status is not in progress!!")
-    reusable.reboot_rgw_nodes()
+    reusable.bring_down_all_rgws_in_the_site("rgw.shared.sec")
+    log.info(f"Waiting for 10 min")
+    time.sleep(600)
+    reusable.bring_up_all_rgws_in_the_site("rgw.shared.sec")
     reusable.check_sync_status()
 
     crash_info = reusable.check_for_crash()
