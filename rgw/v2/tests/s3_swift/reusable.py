@@ -3019,3 +3019,76 @@ def put_get_bucket_acl(rgw_client, bucket_name, acl):
     get_bkt_acl = rgw_client.get_bucket_acl(Bucket=bucket_name)
     get_bkt_acl_json = json.dumps(get_bkt_acl, indent=2)
     log.info(f"get bucket acl response: {get_bkt_acl_json}")
+
+
+def bring_down_all_rgws_in_the_site(rgw_service_name="rgw.shared.pri", retry=10, delay=10):
+   """
+    Method to bring down rgw services in all the nodes
+   """ 
+   cmd = f"ceph orch stop {rgw_service_name}"
+   utils.exec_shell_cmd(cmd)
+   cmd = "ceph orch ps --format json-pretty"
+   out = json.loads(utils.exec_shell_cmd(cmd))
+
+   for entry in out:
+        daemon = entry["daemon_name"].split(".")[0]
+        log.info(f"daemon type is {daemon}")
+        if daemon=="rgw": 
+            log.info("ENTER")
+            service_name = entry["daemon_name"]
+            log.info(f'daemon is {service_name}')
+            status = entry["status_desc"]
+            if str(status) == "running":
+                log.info(f"enter loop of retry")
+                for retry_count in range(retry):
+                    log.info(f"try {retry_count}")
+                    out = json.loads(utils.exec_shell_cmd(cmd))
+                    for entry in out:
+                        if service_name == entry["daemon_name"]:
+                            status = entry["status_desc"]
+                    log.info(f"status is {status}")
+                    if str(status) == "running":
+                        log.info(f"Node is not in expected state, waiting for {delay} seconds")
+                        time.sleep(delay)
+                    else:
+                        log.info(f'Node {service_name} is in expected state')
+                        break
+                if retry_count + 1 == retry:
+                    raise AssertionError("Node is not in expected state!!")
+
+
+
+def bring_up_all_rgws_in_the_site(rgw_service_name="rgw.shared.pri", retry=10, delay=10):
+   """
+    Method to bring up rgw services in all the nodes
+   """ 
+   cmd = f"ceph orch start {rgw_service_name}"
+   utils.exec_shell_cmd(cmd)
+   cmd = "ceph orch ps --format json-pretty"
+   out = json.loads(utils.exec_shell_cmd(cmd))
+
+   for entry in out:
+        daemon = entry["daemon_name"].split(".")[0]
+        log.info(f"daemon type is {daemon}")
+        if daemon=="rgw": 
+            log.info("ENTER")
+            service_name = entry["daemon_name"]
+            log.info(f'daemon is {service_name}')
+            status = entry["status_desc"]
+            if str(status) != "running":
+                log.info(f"enter loop of retry")
+                for retry_count in range(retry):
+                    log.info(f"try {retry_count}")
+                    out = json.loads(utils.exec_shell_cmd(cmd))
+                    for entry in out:
+                        if service_name == entry["daemon_name"]:
+                            status = entry["status_desc"]
+                    log.info(f"status is {status}")
+                    if str(status) != "running":
+                        log.info(f"Node is not in expected state, waiting for {delay} seconds")
+                        time.sleep(delay)
+                    else:
+                        log.info(f'Node {service_name} is in expected state')
+                        break
+                if retry_count + 1 == retry:
+                    raise AssertionError("Node is not in expected state!!")
