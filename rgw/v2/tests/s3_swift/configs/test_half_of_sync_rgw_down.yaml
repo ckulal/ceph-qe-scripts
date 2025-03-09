@@ -1,0 +1,8 @@
+# script: test_sync_post_service_stop_and_start.py
+# Polarion ID: CEPH-83575838
+config:
+  test_ops:
+    test_with_half_of_sync_rgw_down: True
+    service_name: "rgw.shared.pri.sync"
+    sync_retry: 24
+    sync_delay: 900

@@ -3091,7 +3091,7 @@ def node_reboot(node, service_name=None, retry=15, delay=60):
             raise AssertionError("Node is not in expected state post 15min!!")
 
 
-def bring_down_all_rgws_in_the_site(rgw_service_name, retry=10, delay=10):
+def bring_down_all_rgws_in_the_site(rgw_service_name, retry=10, delay=10, test_half_of_sync_rgw_down=False):
     """
     Method to bring down rgw services in all the nodes
     rgw_service_name: RGW service name
@@ -3106,7 +3106,11 @@ def bring_down_all_rgws_in_the_site(rgw_service_name, retry=10, delay=10):
         if daemon == "rgw":
             service_name = entry["daemon_name"]
             log.info(f"daemon is {service_name}")
-            status = entry["status_desc"]
+            if test_half_of_sync_rgw_down:
+                if rgw_service_name in service_name:
+                    status = entry["status_desc"]
+            else:
+                status = entry["status_desc"]
             if str(status) == "running":
                 log.info(f"enter loop of retry")
                 for retry_count in range(retry):
@@ -3120,8 +3124,8 @@ def bring_down_all_rgws_in_the_site(rgw_service_name, retry=10, delay=10):
                         log.info(
                             f"Node is not in expected state, waiting for {delay} seconds"
                         )
-                        time.sleep(delay)
                     else:
+                        time.sleep(delay)
                         log.info(f"Node {service_name} is in expected state")
                         break
                 if retry_count + 1 == retry:
@@ -3162,3 +3166,60 @@ def bring_up_all_rgws_in_the_site(rgw_service_name, retry=10, delay=10):
                         break
                 if retry_count + 1 == retry:
                     raise AssertionError("Node is not in expected state!!")
+
+def fetch_rgw_ips(service_name):
+    host_ips = utils.exec_shell_cmd("cut -f 1 /etc/hosts | cut -d ' ' -f 3")
+    host_ips = host_ips.splitlines()
+    log.info(f"hosts_ips: {host_ips}")
+    rgw_node_ips = []
+    for ip in host_ips:
+        if ip.startswith("10."):
+            log.info(f"ip is {ip}")
+            ssh_con = utils.connect_remote(ip)
+            stdin, stdout, stderr = ssh_con.exec_command(
+                "sudo netstat -nltp | grep radosgw"
+            )
+            netstst_op = stdout.readline().strip()
+            log.info(f"netstat op on node {ip} is:{netstst_op}")
+            if netstst_op:
+                stdin, stdout, stderr = ssh_con.exec_command(
+                    "systemctl list-units | grep rgw|cut -d ' ' -f 3")
+                rgw_service_name = stdout.readline().strip()
+                log.info(f"AAA : {rgw_service_name}")
+                log.info(f"BBB : {service_name}")
+                if str(service_name) in str(rgw_service_name):
+                    rgw_node_ips.append(ip)
+    log.info(f"RGW node ip's are {rgw_node_ips}")
+    return rgw_node_ips
+
+def kernel_stop_rgw_service(rgw_node_ip):
+    ssh_con = utils.connect_remote(rgw_node_ip)
+    stdin, stdout, stderr = ssh_con.exec_command(
+        "systemctl list-units | grep rgw|cut -d ' ' -f 3"
+    )
+    rgw_service_name = stdout.readline().strip()
+    log.info(f"service name is:{rgw_service_name}")
+    cmd = f"systemctl stop {rgw_service_name}"
+    utils.exec_shell_cmd(cmd)
+
+    cmd = f"systemctl disable {rgw_service_name}"
+    utils.exec_shell_cmd(cmd)
+
+    time.sleep(100)
+    stdin, stdout, stderr = ssh_con.exec_command(
+        "systemctl list-units | grep rgw"
+    )
+    output = stdout.readline().strip()
+    log.info(f"output is {output}")
+
+def bring_down_half_of_the_rgw_services(service_name):
+    rgw_node_ips = fetch_rgw_ips(service_name)
+    len_rgw_node_ips = len(rgw_node_ips)
+    log.info(f"no of rgw ips: {len_rgw_node_ips}")
+    half_count = len_rgw_node_ips//2
+    log.info(f"half count: {half_count}")
+    for i in range(0,half_count):
+        kernel_stop_rgw_service(rgw_node_ips[i])
+
+
+

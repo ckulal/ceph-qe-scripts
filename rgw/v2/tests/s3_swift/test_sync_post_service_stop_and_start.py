@@ -37,17 +37,25 @@ def test_exec(config, ssh_con):
     basic_io_structure = BasicIOInfoStructure()
     io_info_initialize.initialize(basic_io_structure.initial())
 
-    out = reusable.check_sync_status(return_while_sync_inprogress=True)
-    if str(out) != "sync_progress":
-        raise AssertionError("sync status is not in progress!!")
-    rgw_service_name = config.test_ops.get("rgw_service_name")
-    reusable.bring_down_all_rgws_in_the_site(rgw_service_name)
-    log.info(f"Waiting for 10 min")
-    time.sleep(600)
-    reusable.bring_up_all_rgws_in_the_site(rgw_service_name)
-    retry = config.test_ops.get("retry", 25)
-    delay = config.test_ops.get("delay", 60)
-    reusable.check_sync_status(retry, delay)
+    if config.test_ops.get("test_with_half_of_sync_rgw_down", False):
+        log.info("Testing secenario: CEPH-83575838: Update steps from : negative - take down sync rgw daemons")
+        # out = reusable.check_sync_status(return_while_sync_inprogress=True)
+        # if str(out) != "sync_progress":
+        #     raise AssertionError("sync status is not in progress!!")
+        service_name = config.test_ops.get("service_name")
+        reusable.bring_down_half_of_the_rgw_services(service_name)
+    else:
+        out = reusable.check_sync_status(return_while_sync_inprogress=True)
+        if str(out) != "sync_progress":
+            raise AssertionError("sync status is not in progress!!")
+        rgw_service_name = config.test_ops.get("rgw_service_name")
+        reusable.bring_down_all_rgws_in_the_site(rgw_service_name)
+        log.info(f"Waiting for 10 min")
+        time.sleep(600)
+        reusable.bring_up_all_rgws_in_the_site(rgw_service_name)
+        retry = config.test_ops.get("sync_retry", 25)
+        delay = config.test_ops.get("sync_delay", 60)
+        reusable.check_sync_status(retry, delay)
 
     crash_info = reusable.check_for_crash()
     if crash_info:
