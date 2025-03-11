@@ -3199,18 +3199,25 @@ def kernel_stop_rgw_service(rgw_node_ip):
     )
     rgw_service_name = stdout.readline().strip()
     log.info(f"service name is:{rgw_service_name}")
-    cmd = f"systemctl stop {rgw_service_name}"
-    utils.exec_shell_cmd(cmd)
 
-    cmd = f"systemctl disable {rgw_service_name}"
-    utils.exec_shell_cmd(cmd)
+    stdin, stdout, stderr = ssh_con.exec_command(f"sudo systemctl stop {rgw_service_name}")
+    stdout = stdout.readline().strip()
+    stderr = stderr.readline().strip()
+    log.info(f"AAA out : {stdout}, err:{stderr}")
 
-    time.sleep(100)
+    stdin, stdout, stderr = ssh_con.exec_command(f"sudo systemctl disable {rgw_service_name}")
+    stdout = stdout.readline().strip()
+    stderr = stderr.readline().strip()
+    log.info(f"BBB out : {stdout}, err:{stderr}")
+
+    time.sleep(60)
+
     stdin, stdout, stderr = ssh_con.exec_command(
         "systemctl list-units | grep rgw"
     )
     output = stdout.readline().strip()
     log.info(f"output is {output}")
+    
 
 def bring_down_half_of_the_rgw_services(service_name):
     rgw_node_ips = fetch_rgw_ips(service_name)
@@ -3221,5 +3228,40 @@ def bring_down_half_of_the_rgw_services(service_name):
     for i in range(0,half_count):
         kernel_stop_rgw_service(rgw_node_ips[i])
 
+        cmd = "ceph orch ps --format json-pretty"
+        out = json.loads(utils.exec_shell_cmd(cmd))
+        for entry in out:
+            daemon = entry["daemon_name"].split(".")[0]
+            log.info(f"daemon type is {daemon}")
+            if daemon == "rgw":
+                log.info(f"daemon is {service_name}")
+                daemon_name = entry["daemon_name"]
+                if service_name in entry["daemon_name"]:
+                    status = entry["status_desc"]
+                    validate_rgw_service_down(daemon_name, status, retry=25, delay=10)
 
 
+def validate_rgw_service_down(daemon_name, daemon_status, retry=25, delay=10):
+
+    log.info(f"daemon name is {daemon_name}")
+    log.info(f"daemon status is {daemon_status}")
+
+    if str(daemon_status) == "running":
+        log.info(f"enter loop of retry")
+        for retry_count in range(retry):
+            log.info(f"try {retry_count}")
+            out = json.loads(utils.exec_shell_cmd(cmd))
+            for entry in out:
+                if daemon_name == entry["daemon_name"]:
+                    status = entry["status_desc"]
+            log.info(f"status is {status}")
+            if str(status) == "running":
+                log.info(
+                    f"Node is not in expected state, waiting for {delay} seconds"
+                )
+            else:
+                time.sleep(delay)
+                log.info(f"Node service {daemon_name} is in expected state")
+                break
+        if retry_count + 1 == retry:
+            raise AssertionError("Node is not in expected state!!")
