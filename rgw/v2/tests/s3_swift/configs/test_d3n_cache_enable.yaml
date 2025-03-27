@@ -1,2 +1,5 @@
 config:
   d3n_feature: true
+  test_ops:
+    nvme_drive_path: /dev/nvme0n1
+    d3n_cache_directory_name: rgw_datacache 
