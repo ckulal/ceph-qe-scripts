@@ -69,3 +69,4 @@ def do_auth_s5cmd(user_info, ssh_con=None):
     """
     create_s5cmd_file(ssh_con)
     update_s5cmd_file(user_info, ssh_con)
+    utils.exec_shell_cmd("/home/cephuser/venv/bin/s5cmd version")

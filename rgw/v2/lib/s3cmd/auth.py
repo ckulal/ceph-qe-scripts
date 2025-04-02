@@ -83,3 +83,5 @@ def do_auth(user_info, ip_and_port):
     create_s3cfg_file()
     update_s3cfg_file(user_info, ip_and_port)
     copy_to_home_directory()
+    utils.exec_shell_cmd("/home/cephuser/venv/bin/s3cmd --version")
+
