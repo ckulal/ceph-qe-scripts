@@ -146,6 +146,25 @@ def create_multipart_upload(
         raise AWSCommandExecError(message=str(e))
 
 
+def upload_part_copy(aws_auth, bucket_name, key_name, part_number, upload_id, version_id, endpoint):
+    command = aws_auth.command(
+        operation="upload-part-copy",
+        params=[
+            f"--bucket {bucket_name} --key {key_name} --copy-source '{bucket_name}/{key_name}?versionId={version_id}' --part-number {part_number} --upload-id {upload_id}"
+            f" --endpoint-url {end_point}",
+        ],
+    )
+    try:
+        response = utils.exec_shell_cmd(command)
+        if not response:
+            raise Exception(
+                f"Uploading part copy with source failed for bucket {bucket_name} with key {key_name} and upload id"
+                f" {upload_id}"
+            )
+        return response
+    except Exception as e:
+        raise AWSCommandExecError(message=str(e))
+
 def upload_part(
     aws_auth,
     bucket_name,

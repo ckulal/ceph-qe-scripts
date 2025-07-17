@@ -67,20 +67,47 @@ def test_exec(config, ssh_con):
             bucket_name = utils.gen_bucket_name_from_userid(user_name, rand_no=bc)
             s3cmd_reusable.create_bucket(bucket_name)
             log.info(f"Bucket {bucket_name} created")
-            log.info("Upload a file")
-            file_size = config.test_ops.get("file_size", 1024)
-            cmd = f"fallocate -l {file_size} object1"
-            utils.exec_shell_cmd(cmd)
-            cmd = f"{s3cmd_path} put object1 s3://{bucket_name}/object1"
-            utils.exec_shell_cmd(cmd)
-            utils.exec_shell_cmd(f"{s3cmd_path} ls s3://{bucket_name}")
-            out1 = aws_reusable.copy_object(cli_aws, bucket_name, "object1", endpoint)
-            aws_reusable.perform_gc_process_and_list()
-            out2 = aws_reusable.get_object(cli_aws, bucket_name, "object1", endpoint)
-            md5sum_out = utils.exec_shell_cmd(f"md5sum 'out_object'").split(" ")[0]
-            md5sum_in = utils.exec_shell_cmd(f"md5sum 'object1'").split(" ")[0]
-            if md5sum_out != md5sum_in:
-                raise AssertionError("md5sum mismatch with downloaded object")
+            if config.test_ops.get("test_upload_part_copy_with_%", False):
+                log.info("Test upload part copy with %")
+                log.info(f"Enable versioning on bucket: {bucket_name}")
+                aws_reusable.put_get_bucket_versioning(
+                    cli_aws, bucket_name, endpoint
+                )
+                object_name = "object_with_%.txt"
+                cmd = f"fallocate -l {file_size} {object_name}"
+                utils.exec_shell_cmd(cmd)
+
+                cmd = f"/usr/local/bin/aws s3 cp {object_name} s3://{bucket_name}/{object_name} --endpoint {endpoint}"
+                out = utils.exec_shell_cmd(cmd)
+
+                cmd = f"/usr/local/bin/aws s3 rm s3://{bucket_name}/{object_name} --endpoint {endpoint}"
+                out = utils.exec_shell_cmd(cmd)
+
+                versions = json.loads(aws_reusable.list_object_versions(cli_aws, bucket_name, endpoint))
+                version_id = versions["Versions"][0]["VersionId"]
+                mp_upload = aws_reusable.create_multipart_upload(cli_aws, bucket_name, object_name, endpoint)
+                upload_id = json.loads(mp_upload)["UploadId"]
+                part_cp_upload = json.loads(aws_reusable.upload_part_copy(cli_aws, bucket_name, object_name, 1, upload_id, endpoint))
+            # check for any crashes during the execution
+            crash_info = s3_reusable.check_for_crash()
+            if crash_info:
+                raise TestExecError("ceph daemon crash found!")
+
+            else:
+                log.info("Upload a file")
+                file_size = config.test_ops.get("file_size", 1024)
+                cmd = f"fallocate -l {file_size} object1"
+                utils.exec_shell_cmd(cmd)
+                cmd = f"{s3cmd_path} put object1 s3://{bucket_name}/object1"
+                utils.exec_shell_cmd(cmd)
+                utils.exec_shell_cmd(f"{s3cmd_path} ls s3://{bucket_name}")
+                out1 = aws_reusable.copy_object(cli_aws, bucket_name, "object1", endpoint)
+                aws_reusable.perform_gc_process_and_list()
+                out2 = aws_reusable.get_object(cli_aws, bucket_name, "object1", endpoint)
+                md5sum_out = utils.exec_shell_cmd(f"md5sum 'out_object'").split(" ")[0]
+                md5sum_in = utils.exec_shell_cmd(f"md5sum 'object1'").split(" ")[0]
+                if md5sum_out != md5sum_in:
+                    raise AssertionError("md5sum mismatch with downloaded object")
         reusable.remove_user(user)
 
 
