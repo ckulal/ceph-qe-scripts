@@ -178,7 +178,7 @@ def download_file(
     return local_file_path
 
 
-def delete_file(bucket_name, file_name):
+def delete_file(bucket_name, file_name, gc_verification=True):
     """
     Deletes file from bucket
     Args:
@@ -187,10 +187,31 @@ def delete_file(bucket_name, file_name):
     """
     delete_file_method = S3CMD(operation="del")
     remote_s3_path = f"s3://{bucket_name}/{file_name}"
+
+    # Identify the size of the file
+    log.info(f"Test S3cmd GC")
+    out = exec_shell_cmd(f"/home/cephuser/venv/bin/s3cmd info {remote_s3_path} | grep 'File size:'")
+    file_size = out.split(":")[1].strip()
+    log.info(f"File size is {file_size}")
+    if int(file_size) < 4194304:
+        gc_verification=False
+        
     command = delete_file_method.command(params=[remote_s3_path])
     try:
         delete_file_response = exec_shell_cmd(command)
         log.debug(f"Response for delete file command: {delete_file_response}")
+        if gc_verification:
+            log.info("Verify GC Process")
+            cmd1 = f"radosgw-admin gc list --include-all"
+            gc_list = utils.exec_shell_cmd(cmd1)
+            gc_list_json = json.loads(gc_list)
+            if len(gc_list_json) == 0:
+                raise AssertionError("GC list not generated for deleted objects")
+            utils.exec_shell_cmd("radosgw-admin gc process --include-all")
+            gc_list = utils.exec_shell_cmd(cmd1)
+            gc_list_json = json.loads(gc_list)
+            if len(gc_list_json) != 0:
+                raise AssertionError("GC process is not successful!")
     except Exception as e:
         raise S3CommandExecError(message=str(e))
     expected_response = f"delete: '{remote_s3_path}'"
