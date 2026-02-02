@@ -308,6 +308,15 @@ def test_exec(config, ssh_con):
                     raise AssertionError(
                         f"Conditional delete failed! object removed with incorrect conditions"
                     )
+            if config.test_ops.get("conditional_deletes_with_multi_condition", False):
+                file_infos = aws_reusable.generate_random_size_files(5)
+                log.info(f"file details are: {file_infos}")
+                log.info("delete objects using combination of conditions")
+                aws_reusable.put_object(cli_aws, bucket_name, object_name, endpoint)
+                version_list = json.loads(
+                    aws_reusable.list_object_versions(cli_aws, bucket_name, endpoint)
+                )
+                log.info("Available objects in the bucket: {version_list}")
             if not incorrect and gc_verify:
                 aws_reusable.validate_gc()
         if config.user_remove is True:

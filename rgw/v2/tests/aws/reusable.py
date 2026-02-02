@@ -6,6 +6,7 @@ import glob
 import json
 import logging
 import os
+import random
 import re
 import shlex
 import socket
@@ -23,6 +24,45 @@ sys.path.append(os.path.abspath(os.path.join(__file__, "../../../../")))
 import v2.utils.utils as utils
 from v2.lib.exceptions import AWSCommandExecError, TestExecError
 from v2.lib.manage_data import io_generator
+
+
+def generate_random_size_files(
+    count,
+    base_dir=None,
+    min_kb=1,
+    max_kb=1024,
+    name_prefix="obj",
+):
+    """
+    Generate a given number of files with random sizes in KB.
+
+    Args:
+        count(int): Number of files to generate.
+        base_dir(str, optional): Directory to create files in. Defaults to
+            tempfile.mkdtemp() if not provided.
+        min_kb(int): Minimum file size in KB (inclusive). Default 1.
+        max_kb(int): Maximum file size in KB (inclusive). Default 1024.
+        name_prefix(str): Prefix for file names. Default "obj".
+
+    Returns:
+        list: List of dicts with keys "name", "size", "md5", "size_kb" for each file.
+    """
+    if base_dir is None:
+        base_dir = tempfile.mkdtemp()
+    os.makedirs(base_dir, exist_ok=True)
+
+    file_infos = []
+    for i in range(count):
+        size_kb = random.randint(min_kb, max_kb)
+        size_bytes = size_kb * 1024
+        fname = os.path.join(base_dir, f"{name_prefix}_{i}")
+        data_info = io_generator(fname, size_bytes)
+        if data_info is False:
+            raise TestExecError(f"Failed to create file {fname}")
+        data_info["size_kb"] = size_kb
+        file_infos.append(data_info)
+        log.info(f"Generated file {fname} with size {size_kb} KB")
+    return file_infos
 
 
 def create_bucket(aws_auth, bucket_name, end_point, retries=3, wait_time=5):
@@ -579,6 +619,172 @@ def delete_object(aws_auth, bucket_name, object_name, end_point, versionid=None)
         return delete_response
     except Exception as e:
         raise AWSCommandExecError(message=str(e))
+
+
+def delete_objects(
+    aws_auth,
+    bucket_name,
+    object_keys,
+    end_point,
+    version_ids=None,
+    quiet=False,
+):
+    """
+    Deletes multiple objects from the bucket in a single request (batch delete).
+    Uses AWS S3 API delete-objects (max 1000 objects per request; batches automatically).
+
+    Ex: aws s3api delete-objects --bucket <bucket_name> --delete file://<payload>
+        --endpoint-url <endpoint_url>
+
+    Args:
+        aws_auth: AWS auth instance (e.g. from v2.lib.aws.resource_op.AWS)
+        bucket_name (str): Name of the bucket
+        object_keys (list): List of object keys to delete. Each item can be:
+            - str: key name
+            - dict: {"Key": "keyname"} or {"Key": "keyname", "VersionId": "vid"}
+        end_point (str): Endpoint URL
+        version_ids (dict, optional): Optional mapping of key -> version_id for versioned deletes.
+            If provided, object_keys can be plain strings and version_ids[key] is used.
+        quiet (bool): If True, response omits list of deleted objects (default False)
+
+    Returns:
+        str: Raw command output (JSON response from delete-objects)
+    """
+    if not object_keys:
+        log.info("delete_objects: no keys to delete")
+        return ""
+
+    # Normalize to list of {"Key": k, "VersionId": v?}
+    objects_payload = []
+    for item in object_keys:
+        if isinstance(item, dict):
+            if "Key" not in item:
+                raise ValueError("Each object must have 'Key'")
+            objects_payload.append(item.copy())
+        else:
+            obj = {"Key": item}
+            if version_ids and item in version_ids:
+                obj["VersionId"] = version_ids[item]
+            objects_payload.append(obj)
+
+    # S3 delete-objects allows max 1000 objects per request
+    batch_size = 1000
+    all_responses = []
+    for i in range(0, len(objects_payload), batch_size):
+        batch = objects_payload[i : i + batch_size]
+        delete_spec = {"Objects": batch, "Quiet": quiet}
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
+            delete=False,
+        ) as f:
+            json.dump(delete_spec, f)
+            tmp_path = f.name
+        try:
+            command = aws_auth.command(
+                operation="delete-objects",
+                params=[
+                    f"--bucket {bucket_name} --endpoint-url {end_point} "
+                    f"--delete file://{tmp_path}",
+                ],
+            )
+            delete_response = utils.exec_shell_cmd(command)
+            log.info(f"delete-objects response (batch): {delete_response}")
+            if delete_response is False:
+                raise Exception(
+                    f"delete-objects failed for {bucket_name} (batch of {len(batch)} keys)"
+                )
+            all_responses.append(delete_response)
+        finally:
+            utils.exec_shell_cmd(f"rm -f {tmp_path}", return_err=True)
+    return "\n".join(all_responses) if len(all_responses) > 1 else (all_responses[0] if all_responses else "")
+
+
+def conditional_delete_objects(
+    aws_auth,
+    bucket_name,
+    objects_specs,
+    end_point,
+    quiet=False,
+    return_err=False,
+):
+    """
+    Conditional multi-object delete using the S3 DeleteObjects API with per-object
+    conditions (ETag, LastModifiedTime, Size). Objects are deleted only if their
+    current attributes match the specified conditions.
+
+    See: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
+
+    Request supports up to 1,000 objects per call. Each object can include:
+    - Key (required)
+    - VersionId (optional, for versioned buckets)
+    - ETag (optional): delete only if object's ETag matches (general purpose buckets)
+    - LastModifiedTime (optional): delete only if modification time matches (directory buckets)
+    - Size (optional): delete only if object size in bytes matches (directory buckets)
+
+    Args:
+        aws_auth: AWS auth instance (e.g. from v2.lib.aws.resource_op.AWS)
+        bucket_name (str): Name of the bucket
+        objects_specs (list): List of object spec dicts. Each dict must have "Key"
+            and may have "VersionId", "ETag", "LastModifiedTime", "Size".
+            Example: [{"Key": "obj1", "ETag": "abc123"}, {"Key": "obj2", "ETag": "def456", "Size": 1024}]
+        end_point (str): Endpoint URL
+        quiet (bool): If True, response omits list of deleted objects (default False)
+        return_err (bool): If True, on failure return error output instead of raising (default False)
+
+    Returns:
+        str: Raw command output (JSON response with Deleted/Errors), or error output if return_err=True and call failed.
+    """
+    if not objects_specs:
+        log.info("conditional_delete_objects: no objects to delete")
+        return ""
+
+    objects_payload = []
+    for spec in objects_specs:
+        if not isinstance(spec, dict) or "Key" not in spec:
+            raise ValueError("Each object spec must be a dict with 'Key'")
+        obj = {"Key": spec["Key"]}
+        if spec.get("VersionId") is not None:
+            obj["VersionId"] = spec["VersionId"]
+        if spec.get("ETag") is not None:
+            obj["ETag"] = spec["ETag"]
+        if spec.get("LastModifiedTime") is not None:
+            obj["LastModifiedTime"] = spec["LastModifiedTime"]
+        if spec.get("Size") is not None:
+            obj["Size"] = int(spec["Size"])
+        objects_payload.append(obj)
+
+    batch_size = 1000
+    all_responses = []
+    for i in range(0, len(objects_payload), batch_size):
+        batch = objects_payload[i : i + batch_size]
+        delete_spec = {"Objects": batch, "Quiet": quiet}
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
+            delete=False,
+        ) as f:
+            json.dump(delete_spec, f)
+            tmp_path = f.name
+        try:
+            command = aws_auth.command(
+                operation="delete-objects",
+                params=[
+                    f"--bucket {bucket_name} --endpoint-url {end_point} "
+                    f"--delete file://{tmp_path}",
+                ],
+            )
+            delete_response = utils.exec_shell_cmd(command, return_err=return_err)
+            log.info(f"conditional delete-objects response (batch): {delete_response}")
+            if delete_response is False and not return_err:
+                raise Exception(
+                    f"conditional delete-objects failed for {bucket_name} (batch of {len(batch)} keys)"
+                )
+            all_responses.append(delete_response if delete_response is not False else "")
+        finally:
+            utils.exec_shell_cmd(f"rm -f {tmp_path}", return_err=True)
+
+    return "\n".join(all_responses) if len(all_responses) > 1 else (all_responses[0] if all_responses else "")
 
 
 def put_get_bucket_versioning(aws_auth, bucket_name, end_point, status="Enabled"):
