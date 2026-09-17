@@ -6,6 +6,7 @@ Usage: test_rgw_smb_basic_ops.py -c <input_yaml>
 <input_yaml>
     configs/test_rgw_smb_basic_ops.yaml
     configs/test_rgw_smb_cluster_with_placement.yaml
+    configs/test_rgw_smb_mount.yaml
 
 Operation:
     Create RGW user (user1)
@@ -13,6 +14,7 @@ Operation:
     Optionally create SMB cluster (placement label:smb)
     Apply SMB RGW credential + share resources via ceph smb apply
     List SMB shares and verify share is present
+    Optionally mount/access share from client using samba-client (smbclient)
     Delete SMB share (and credential)
     List SMB shares and verify share is removed
 """
@@ -83,13 +85,17 @@ def test_exec(config, ssh_con):
         log.info(f"Bucket {bucket_name} created successfully")
 
     if config.test_ops.get("create_smb_cluster", False):
-        # 1. Create SMB cluster
-        smb_reusable.create_smb_cluster(
-            cluster_id,
-            auth_mode=config.test_ops.get("smb_auth_mode", "user"),
-            define_user_pass=define_user_pass,
-            placement=config.test_ops.get("placement"),
-        )
+        # 1. Create SMB cluster if it is not already present
+        cluster_list = smb_reusable.list_smb_clusters()
+        if smb_reusable.cluster_in_list(cluster_list, cluster_id):
+            log.info(f"SMB cluster {cluster_id} already exists, skipping create")
+        else:
+            smb_reusable.create_smb_cluster(
+                cluster_id,
+                auth_mode=config.test_ops.get("smb_auth_mode", "user"),
+                define_user_pass=define_user_pass,
+                placement=config.test_ops.get("placement"),
+            )
         # 2. Validate cluster is listed in ceph smb cluster ls
         log.info("Validating SMB cluster is listed in ceph smb cluster ls")
         cluster_list = smb_reusable.list_smb_clusters()
@@ -121,6 +127,25 @@ def test_exec(config, ssh_con):
         smb_reusable.verify_share_in_list(share_list, share_id, expect_present=True)
         share_info = smb_reusable.show_smb_share(cluster_id, share_id)
         log.info(f"Share details: {share_info}")
+
+    if config.test_ops.get("mount_smb_share", False):
+        log.info("Mounting RGW-backed SMB share from client node using samba-client")
+        test_file_path = None
+        if TEST_DATA_PATH:
+            test_file_path = os.path.join(TEST_DATA_PATH, "rgw_smb_mount_test.txt")
+        smb_reusable.mount_smb_share_with_smbclient(
+            cluster_id=cluster_id,
+            share_name=share_name,
+            define_user_pass=define_user_pass,
+            smb_endpoint=config.test_ops.get("smb_endpoint"),
+            smb_port=config.test_ops.get("smb_port"),
+            smbclient_io=config.test_ops.get("smbclient_io", False),
+            test_file_path=test_file_path,
+        )
+        log.info(
+            f"SMB share {share_name} accessed successfully via smbclient "
+            f"on the client node"
+        )
 
     if config.test_ops.get("delete_smb_share", True):
         log.info("Deleting SMB share and RGW credential")

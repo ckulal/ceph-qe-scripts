@@ -1,0 +1,42 @@
+# script: test_rgw_smb_basic_ops.py
+# Description: Mount RGW-backed SMB share from a client node using samba-client
+#
+# Workflow:
+#   1. Create RGW user: user1
+#   2. Create bucket: test1
+#   3. Create SMB cluster rgw-smb with --placement="label:smb"
+#   4. Apply SMB resources (credential + RGW-backed share)
+#   5. List shares and verify
+#   6. Install samba-client on the client node
+#   7. Resolve SMB endpoint from ceph orch
+#   8. Access share with:
+#        smbclient //<smb-endpoint>/<sharename> -U <smbuser>%<smbpasswd>
+#   9. Put a test file via smbclient and verify it is listed
+#  10. Delete share/credential and SMB cluster
+#
+# Prerequisite: Host(s) labeled with 'smb' via:
+#   ceph orch host label add <host> smb
+config:
+  user_count: 1
+  bucket_count: 1
+  objects_count: 0
+  user_remove: true
+  test_ops:
+    user_name: user1
+    bucket_name: test1
+    create_bucket: true
+    cluster_id: rgw-smb
+    share_id: rgw-share3
+    share_name: rshare3
+    credential_id: external-rgw-creds
+    create_smb_cluster: true
+    smb_auth_mode: user
+    define_user_pass: smbuser%smbpass
+    placement: "label:smb"
+    create_smb_share: true
+    list_smb_share: true
+    mount_smb_share: true
+    smbclient_io: true
+    delete_smb_share: true
+    delete_via_apply: true
+    delete_smb_cluster: true
