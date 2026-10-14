@@ -1,0 +1,9 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# Send a correct ETag with a wrong size, then a correct size with a wrong
+# mtime. Any one mismatch must return 412 and leave the object in place.
+# A delete when only part of the set matched is the failure.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_partial_match: true

@@ -679,9 +679,10 @@ def conditional_delete_object(
         object_name(str): Name of the object/file
         end_point(str): endpoint
         versionid(str): version id of object
-        etag(str): etag of an object
+        etag(str): If-Match value, sent as given. Surrounding quotes are kept,
+            so both abcEXTRA and "abcEXTRA" can be passed.
         last_modified_time(str): last modified time of an object
-        size(int): size of an object
+        size(int): If-Match size. 0 is sent. None omits the size header.
         return_err(boolean): if true returns error
     Return:
 
@@ -689,15 +690,15 @@ def conditional_delete_object(
     params = [f"--bucket {bucket_name} --key {object_name} --endpoint-url {end_point}"]
 
     if versionid:
-        params = [params[0] + f" --version-id {versionid}"]
+        params = [params[0] + f" --version-id {shlex.quote(str(versionid))}"]
 
     if etag:
-        params = [params[0] + f" --if-match {etag}"]
+        params = [params[0] + f" --if-match {shlex.quote(str(etag))}"]
 
     if last_modified_time:
         params = [params[0] + f" --if-match-last-modified-time {last_modified_time}"]
 
-    if size:
+    if size is not None:
         params = [params[0] + f" --if-match-size {size}"]
 
     command = aws_auth.command(
@@ -2479,6 +2480,7 @@ def delete_objects(
     end_point,
     quiet=False,
     return_err=False,
+    debug=False,
 ):
     """
     Delete multiple objects in a single request (DeleteObjects API).
@@ -2499,6 +2501,8 @@ def delete_objects(
         end_point(str): endpoint URL
         quiet(bool): If True, response includes only keys that had errors
         return_err(bool): If True, return stderr/output on failure instead of raising
+        debug(bool): If True, run aws --debug so HTTP 412 is visible when the
+            CLI prints a NoneType error instead of the status
 
     Returns:
         Command output (JSON string) with "Deleted" and/or "Errors" list
@@ -2510,13 +2514,20 @@ def delete_objects(
         json.dump(delete_spec, f)
         tmp_path = f.name
     try:
+        debug_flag = " --debug" if debug else ""
         command = aws_auth.command(
             operation="delete-objects",
             params=[
-                f"--bucket {bucket_name} --delete file://{tmp_path} --endpoint-url {end_point}",
+                f"--bucket {bucket_name} --delete file://{tmp_path} "
+                f"--endpoint-url {end_point}{debug_flag}",
             ],
         )
-        response = utils.exec_shell_cmd(command, return_err=return_err)
+        response = utils.exec_shell_cmd(
+            command, debug_info=debug, return_err=return_err or debug
+        )
+        if isinstance(response, tuple):
+            out, err = response
+            response = f"{out or ''}\n{err or ''}"
         log.info(f"delete-objects response: {response}")
         if response is False and not return_err:
             raise Exception(
@@ -2702,27 +2713,27 @@ def conditional_put_multipart_upload(
 
     try:
         if return_err:
-            complete_resp = utils.exec_shell_cmd(
+            condition = (
+                f" --if-match {if_match_etag}"
+                if if_match_etag
+                else ' --if-none-match "*"'
+            )
+            result = utils.exec_shell_cmd(
                 aws_auth.command(
                     operation="complete-multipart-upload",
                     params=[
                         f"--multipart-upload file://mpstructure.json --bucket {bucket_name} "
                         f"--key {key_name} --upload-id {upload_id} --endpoint-url {endpoint}"
-                        + (
-                            f" --if-match {if_match_etag}"
-                            if if_match_etag
-                            else ' --if-none-match "*"'
-                        )
+                        f"{condition} --debug"
                     ],
                 ),
+                debug_info=True,
                 return_err=True,
             )
-            if complete_resp:
-                try:
-                    return json.loads(complete_resp)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            return complete_resp
+            if isinstance(result, tuple):
+                out, err = result
+                return f"{out or ''}\n{err or ''}"
+            return result
         response = complete_multipart_upload_conditional(
             aws_auth,
             bucket_name,

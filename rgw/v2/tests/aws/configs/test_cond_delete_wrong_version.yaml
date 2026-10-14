@@ -1,0 +1,12 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# On a versioned bucket, write version A, then version B.
+# Delete with versionId of A and with B's ETag, size, and mtime. That must
+# return 412, and B must remain current.
+# Then delete with no version id and A's ETag. That must return 412, and A
+# must still exist.
+# Deleting the other generation is the data-loss case.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_wrong_version: true

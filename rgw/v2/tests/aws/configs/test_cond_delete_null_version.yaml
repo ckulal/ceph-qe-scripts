@@ -1,0 +1,13 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# Enable versioning, write an object, suspend versioning, and overwrite it so
+# the null version is current. Delete with no version id, and delete with
+# versionId=null, each with the null version's ETag and with the older
+# version's ETag.
+# The no-id delete must create a delete marker only when the current null
+# version matches. versionId=null must permanently remove that null version
+# only when its own metadata matches.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_null_version: true

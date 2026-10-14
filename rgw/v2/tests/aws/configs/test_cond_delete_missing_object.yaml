@@ -1,0 +1,15 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# Delete a key that was never written, once on an unversioned bucket and once
+# on a versioned bucket, using a wrong ETag, a wrong size, and a wrong mtime.
+# No version id is sent.
+# Unversioned RGW returns not found before it evaluates the conditions, and the
+# S3 response turns that into 204. A wrong condition still looks successful.
+# Versioned size and mtime are evaluated against an empty state, so a wrong
+# size or time can return 412, while If-Match still becomes 204.
+# 204 is a failure: it means both "deleted the matching object" and "there was
+# nothing to delete."
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_missing_object: true

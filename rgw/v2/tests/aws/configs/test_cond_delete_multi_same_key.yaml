@@ -1,0 +1,10 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# On a versioned bucket, one DeleteObjects body lists the same key twice:
+# a bad ETag, then the real ETag. The bad entry must be PreconditionFailed
+# and the good entry must delete exactly once. Repeat with Quiet true.
+# A misspelled Etag element must not delete the object with no condition.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_multi_same_key: true

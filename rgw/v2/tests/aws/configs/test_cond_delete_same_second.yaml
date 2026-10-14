@@ -1,0 +1,11 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# Overwrite an object twice within one second, then immediately conditional-delete
+# with the first generation's LastModified. Normal requests compare that time
+# with nanoseconds cleared, so both generations can match. 204 and loss of the
+# second generation is a failure for an unversioned object, for the current
+# version, and for a delete of that second version by versionId.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_same_second: true

@@ -1,0 +1,14 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# Delete an object once so the current version is a delete marker, then
+# conditional-delete again with no version id.
+# If-Match * can succeed and write another delete marker.
+# A concrete ETag must be 412, because a delete marker has no ETag.
+# Size 0 can match the marker and write another one.
+# A wrong mtime must be 412.
+# Stacking delete markers is a failure. A normal GET must still return 404,
+# and x-amz-delete-marker: true is set only when a marker was actually written.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_delete_marker: true

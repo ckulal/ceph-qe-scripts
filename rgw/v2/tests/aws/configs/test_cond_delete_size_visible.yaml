@@ -1,0 +1,11 @@
+# script: ceph-qe-scripts/rgw/v2/tests/aws/test_conditional_delete.py
+# Delete an empty object with size 0, and delete another with the size header
+# omitted. Both must succeed. Repeat for a multipart object and a compressed
+# object, sending HEAD Content-Length and the raw stored size when those
+# differ. Matching the wrong size field either blocks a valid delete or
+# deletes an object whose visible size did not match.
+config:
+  user_count: 1
+  bucket_count: 1
+  test_ops:
+    conditional_delete_size_visible: true
