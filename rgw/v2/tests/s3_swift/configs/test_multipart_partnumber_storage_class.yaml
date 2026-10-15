@@ -1,0 +1,28 @@
+# script: rgw/v2/tests/s3_swift/test_multipart_partnumber_storage_class.py
+# Tracker: https://tracker.ceph.com/issues/81780
+# PR: https://github.com/ceph/ceph/pull/72710
+#
+# Single-site cluster with no realm. Placement is written to the local zone
+# and zonegroup, then RGW is restarted. There is no period to commit.
+#
+# Validates GET/HEAD ?partNumber and GetObjectAttributes ObjectParts for a
+# completed multipart upload stored in a non-default storage class that has
+# its own data pool. The compressed class covers the ObjectParts size symptom
+# from the same tracker (logical part sizes, not compressed sizes).
+#
+# Set test_ops.compression to "none" to skip the compressed storage class.
+# Non-final parts must be at least 5MiB.
+config:
+  user_count: 1
+  user_remove: true
+  storage_class: STANDARD_IA
+  pool_name: standard.ia
+  second_storage_class: STANDARD_IA_ZLIB
+  second_pool_name: standard.ia.zlib
+  test_ops:
+    verify_default_storage_class: true
+    compression: zlib
+    part_sizes_mb:
+      - 5
+      - 5
+      - 1
